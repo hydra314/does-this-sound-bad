@@ -33,6 +33,8 @@ type Var = String
 --             | expr < expr
 --             | expr <= expr
 --             | `not` expr
+--             | `define` func var expr
+--             | `call` expr expr
 data Expr = I Int
           | B Bool
           | S String
@@ -49,6 +51,8 @@ data Expr = I Int
           | LST Expr Expr
           | LTE Expr Expr
           | NOT Expr
+          | Def Var Expr
+          | Call Expr Expr
     deriving(Eq,Show)
 
 -- |    Commands include if/else conditionals, loops, function definitions and calls, variable assignments, and command blocks
@@ -57,14 +61,10 @@ data Expr = I Int
 --      
 --      cmd ::= `if` expr cmd `else` cmd
 --            | `while` expr cmd
---            | `define` func (var *) { cmd* }
---            | `call` func (expr *)
 --            | `assign` var expr
 --            | { cmd * }
 data Cmd = If Expr Cmd Cmd
          | While Expr Cmd
-         | Define String [Var] [Cmd]
-         | Call String [Expr]
          | Assign Var Expr
          | Block [Cmd]
     deriving(Eq,Show)
@@ -190,6 +190,8 @@ evalExpr (NOT x)   m = Right (not (unpackBool x m))
 evalExpr (V x)     m = case lookup x m of
                         Just v -> v
                         Nothing -> error "Error: undefined variable"
+evalExpr (Def v x)  m = evalExpr x m
+evalExpr (Call x y) m = evalExpr x m
 
 -- Unpacks an Int from an Expression.
 -- Can be the result of an arithmetic expression,
@@ -216,7 +218,6 @@ evalCmd (While x w)  m = if unpackBool x m
                                   then evalCmd (While x w) (evalCmd w m)
                                   else m
 evalCmd (Block cmds) m = evalCmds cmds m
--- DEFINE FUNCTION STUFF HERE
 
 -- Executes a list of commands
 evalCmds :: [Cmd] -> Env Val -> Env Val
@@ -243,14 +244,26 @@ start p = if typeProg p then Just (evalProg p)
 --
 
 -- makes a string upper case
+-- example of using upCase
+-- lowCase "HELLO world"
+-- bad example of using upCase
+-- lowCase HELLO world
 upCase :: [Char] -> [Char]
 upCase = map toUpper
 
 -- makes a string lower case
+-- example of using lowCase
+-- lowCase "HELLO world"
+-- bad example of using lowCase
+-- lowCase HELLO world
 lowCase :: [Char] -> [Char]
 lowCase = map toLower
 
 -- | Concatenate two strings
+-- example of using cat_string
+-- cat_string "hello" "world"
+-- bad example of using cat_string
+-- cat_string hello world
 
 cat_string :: String -> String -> String
 cat_string a b = a ++ b
@@ -259,7 +272,10 @@ cat_string a b = a ++ b
 --
 -- *    Tuple Operations
 --
-
+-- example of using tuple_gen:
+-- tuple_gen (I 1) (B True)
+-- bad example of using tuple_gen:
+-- tuple_gen 1 2
 tuple_gen :: Expr -> Expr -> (Expr, Expr)
 tuple_gen (I x) (I y) = ((I x),(I y))
 tuple_gen (B x) (I y) = ((B x),(I y))
@@ -272,10 +288,18 @@ tuple_gen (T x y) (B s) = ((T x y),(B s))
 tuple_gen (B s) (T x y)  = ((B s),(T x y))
 
 -- | Returns the first element in a tuple of two values
+-- example of using tuple_first:
+-- tuple_first (I 1, I 2)
+-- bad example:
+-- tuple_first (1, 2)
 tuple_first :: (Expr, Expr) -> Expr
 tuple_first (x, y) = x
 
 -- | Returns the first element in a tuple of two values
+-- example of using tuple_second:
+-- tuple_second (B true, B false)
+-- bad example:
+-- tuple_second (true, false)
 tuple_second :: (Expr, Expr) -> Expr
 tuple_second (x, y) = y
 
@@ -285,11 +309,19 @@ tuple_second (x, y) = y
 --
 
 -- | Returns the length of a given list
+-- example of using len:
+-- len [I 1, I 2]
+-- bad example:
+-- len [1,2,3]
 len :: [Expr]  -> Int
 len [] = 0
 len (x:xs)  = len(xs) +1
 
 -- | Checks to see if a Expr datatype is in a list of Exprs
+-- example of using contains_val
+-- contains_val [I 1, I 2] (I 1)
+-- bad example:
+-- contains_val [1, 2, 3] 2
 
 contains_val :: [Expr] -> Expr -> Bool
 contains_val [] _ = False
@@ -304,15 +336,30 @@ contains_val (x:xs) (T x1 y)
     | otherwise = contains_val xs (T x1 y)
 
 -- | Concatenate two lists of values
+-- examples of using cat_vals
+-- cat_vals [I 1, I 2] [I 3]
+-- cat_vals [I 1, B True] [B False]
+-- bad examples:
+-- cat_vals [1, 2, 3] 4
 
 cat_vals :: [Expr] -> [Expr] -> [Expr]
 cat_vals list_a list_b = list_a ++ list_b
 
 -- | Access a chosen index from a list
+-- example of using index:
+-- index [I 1, I 2, I 3] 3
+-- bad examples:
+-- index [1, 2, 3, 4] 3
+-- 
 index :: [Expr] -> Int -> Expr
 index xs i = xs !! i
 
 -- | Appends a value to a list
+-- example of using append: 
+-- append [1,2,3] [4]
+-- examples of using append wrong:
+-- append [1,2,3] 4
+-- append [1,2,3] ["4"]
 append :: [Expr] -> [Expr] -> [Expr]
 append [] x = x
 append (x:xs) y = x : append xs y
