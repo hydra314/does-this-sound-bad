@@ -146,11 +146,11 @@ typeExpr (V v)     m = lookup v m
 -- | Checks the parameters of a Cmd.
 --   Returns true if they're valid and false if they're not.
 typeCmd :: Cmd -> Env Type -> Bool
-typeCmd (If x ifTrue ifFalse) m = case typeExpr x m of
-                                       Just TBool -> typeCmd ifTrue m && typeCmd ifFalse m
+typeCmd (If x t f) m = case typeExpr x m of
+                                       Just TBool -> typeCmd t m && typeCmd f m
                                        _          -> False
-typeCmd (While x loopCmd)     m = case typeExpr x m of
-                                       Just TBool -> typeCmd loopCmd m
+typeCmd (While x w)     m = case typeExpr x m of
+                                       Just TBool -> typeCmd w m
                                        _          -> False
 typeCmd (Assign v e)          m = case (lookup v m, typeExpr e m) of
                                        (Just tv, Just te) -> tv == te
@@ -191,13 +191,16 @@ evalExpr (V x)     m = case lookup x m of
                         Just v -> v
                         Nothing -> error "Error: undefined variable"
 
--- Unpacks an Int from an Expression of the form I Int
+-- Unpacks an Int from an Expression.
+-- Can be the result of an arithmetic expression,
+-- or just a literal Int
 unpackInt :: Expr -> Env Val -> Int
 unpackInt x m = case evalExpr x m of
                     Left i  -> i
                     Right _ -> error "Error: expected Int, got Bool instead"
 
--- Unpacks a Bool from an Expression of the form B Bool
+-- Unpacks a Bool from an Expression.
+-- Can be a comparison or a literal Bool.
 unpackBool :: Expr -> Env Val -> Bool
 unpackBool x m = case evalExpr x m of
                     Right b -> b 
@@ -205,7 +208,34 @@ unpackBool x m = case evalExpr x m of
 
 -- Executes a command
 evalCmd :: Cmd -> Env Val -> Env Val
-evalCmd (Assign v e) m = insert v (evalExpr e m) m
+evalCmd (Assign v e)          m = insert v (evalExpr e m) m
+evalCmd (If x t f)   m = if unpackBool x m
+                                  then evalCmd t m
+                                  else evalCmd f m
+evalCmd (While x w)  m = if unpackBool x m
+                                  then evalCmd (While x w) (evalCmd w m)
+                                  else m
+evalCmd (Block cmds) m = evalCmds cmds m
+-- DEFINE FUNCTION STUFF HERE
+
+-- Executes a list of commands
+evalCmds :: [Cmd] -> Env Val -> Env Val
+evalCmds []     m = m
+evalCmds (x:xs) m = evalCmds xs (evalCmd x m)
+
+-- Sets up an environment, initializes Ints to 0 and Bools to false.
+-- Runs the program.
+evalProg :: Prog -> Env Val
+evalProg (P ds c) = evalCmd c m
+    where
+        m = fromList (map (\(x,t) -> (x, init t)) ds)
+        init TInt   = Left 0
+        init TBool  = Right False
+
+-- Check for type errors and run the program
+start :: Prog -> Maybe (Env Val)
+start p = if typeProg p then Just (evalProg p)
+                        else Nothing
 
 
 --
