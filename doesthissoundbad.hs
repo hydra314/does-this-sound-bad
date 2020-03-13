@@ -5,13 +5,13 @@ import Data.Maybe (fromJust)
 import Data.Char
 import Prelude hiding (lookup)
 
+
 --
 -- *    Abstract Syntax
 --
 
 -- |    Variables
 type Var = String
-type Func = String
 
 -- |    Expressions include literals, arithmetic expressions, comparisons, and variable references
 --     
@@ -19,6 +19,7 @@ type Func = String
 --
 --      expr ::= int
 --             | bool
+--             | string
 --             | tuple
 --             | var
 --             | expr + expr
@@ -34,6 +35,7 @@ type Func = String
 --             | `not` expr
 data Expr = I Int
           | B Bool
+          | S String
           | T Expr Expr
           | V Var
           | ADD Expr Expr
@@ -43,7 +45,7 @@ data Expr = I Int
           | EQU Expr Expr
           | NEQ Expr Expr
           | GRT Expr Expr
-          | GRE Expr Expr
+          | GTE Expr Expr
           | LST Expr Expr
           | LTE Expr Expr
           | NOT Expr
@@ -61,8 +63,8 @@ data Expr = I Int
 --            | { cmd * }
 data Cmd = If Expr Cmd Cmd
          | While Expr Cmd
-         | Define Func [Var] [Cmd]
-         | Call Func [Expr]
+         | Define String [Var] [Cmd]
+         | Call String [Expr]
          | Assign Var Expr
          | Block [Cmd]
     deriving(Eq,Show)
@@ -71,7 +73,7 @@ data Cmd = If Expr Cmd Cmd
 --     
 --      type  ::=  `int`  |  `bool`
 --
-data Type = TInt | TBool
+data Type = TInt | TBool | TString | TTuple
   deriving (Eq,Show)
 
 -- |    Abstract syntax of declarations.
@@ -87,6 +89,7 @@ type Decl = (Var,Type)
 data Prog = P [Decl] Cmd
   deriving (Eq,Show)
 
+
 --
 -- *    Type System
 --
@@ -98,49 +101,61 @@ data Prog = P [Decl] Cmd
 
 type Env a = Map Var a
 
--- | Typing relation for expressions. We need an environment to lookup
---   the names of variable references (last case). We use a Maybe to
---   represent the fact that typing might fail, for example, if we get
---   a type error or if a variable is not in the environment.
+-- | Gets the true type of an Expr variable. Uses Maybe so it can
+--   throw an error in the case of an unsupported type.
 typeExpr :: Expr -> Env Type -> Maybe Type
-typeExpr (I _)   _ = Just TInt
+typeExpr (I _)     _ = Just TInt
+typeExpr (B _)     _ = Just TBool
+typeExpr (T _ _)   _ = Just TTuple
 typeExpr (ADD l r) m = case (typeExpr l m, typeExpr r m) of
-                         (Just TInt, Just TInt) -> Just TInt
-                         _                      -> Nothing
+                            (Just TInt, Just TInt) -> Just TInt
+                            _                      -> Nothing
+typeExpr (SUB l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TInt
+                            _                      -> Nothing
+typeExpr (MUL l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TInt
+                            _                      -> Nothing
+typeExpr (DIV l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TInt
+                            _                      -> Nothing
+typeExpr (EQU l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing
+typeExpr (NEQ l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing                                                        
+typeExpr (GRT l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing
+typeExpr (GTE l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing
+typeExpr (LST l r) m = case (typeExpr l m, typeExpr r m) of
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing
 typeExpr (LTE l r) m = case (typeExpr l m, typeExpr r m) of
-                         (Just TInt, Just TInt) -> Just TBool
-                         _                      -> Nothing
+                            (Just TInt, Just TInt) -> Just TBool
+                            _                      -> Nothing
 typeExpr (NOT e)   m = case typeExpr e m of
-                         Just TBool -> Just TBool
-                         _          -> Nothing
-typeExpr (V v)   m = lookup v m
+                            Just TBool -> Just TBool
+                            _          -> Nothing
+typeExpr (V v)     m = lookup v m
 
 
--- | Type checking statements. NOTe that the return type here is just a
---   Boolean value since a statement doesn't have a type. The Boolean
---   value indicates whether or not the statement is type correct (i.e.
---   this function implements type checking of statements).
--- 
---   Also note that when we type check a while loop, we do not execute
---   the loop several times; we just check that the type of the condition
---   is a Bool, and check that the body type checks. If both of those are
---   true, then we know that the while loop cannot produce a type error
---   without having to consider each iteration. This is where the benefits
---   of static type checking start to become more clear. With dynamic
---   typing we would have to check the types in the loop body on each
---   iteration, whereas with static typing we just check the loop body
---   once.
+-- | Checks the parameters of a Cmd.
+--   Returns true if they're valid and false if they're not.
 typeCmd :: Cmd -> Env Type -> Bool
-typeCmd (Assign v e)   m = case (lookup v m, typeExpr e m) of
-                            (Just tv, Just te) -> tv == te
-                            _ -> False
-typeCmd (If c st se) m = case typeExpr c m of
-                            Just TBool -> typeCmd st m && typeCmd se m
-                            _ -> False
-typeCmd (While c sb) m = case typeExpr c m of
-                            Just TBool -> typeCmd sb m
-                            _ -> False
-typeCmd (Block ss)   m = all (\s -> typeCmd s m) ss
+typeCmd (If x ifTrue ifFalse) m = case typeExpr x m of
+                                       Just TBool -> typeCmd ifTrue m && typeCmd ifFalse m
+                                       _          -> False
+typeCmd (While x loopCmd)     m = case typeExpr x m of
+                                       Just TBool -> typeCmd loopCmd m
+                                       _          -> False
+typeCmd (Assign v e)          m = case (lookup v m, typeExpr e m) of
+                                       (Just tv, Just te) -> tv == te
+                                       _                  -> False
+typeCmd (Block ss)            m = all (\s -> typeCmd s m) ss
 
 
 -- | Type checking programs. The 'fromList' function is from the
@@ -150,11 +165,47 @@ typeProg :: Prog -> Bool
 typeProg (P ds s) = typeCmd s (fromList ds)
 
 
+--
+-- *    Semantics
+-- 
 
+-- Basic semantic building block of the language
+type Val = Either Int Bool
 
--- if' :: Bool -> a -> a -> a
--- if' True  x _ = x
--- if' False _ y = y
+-- Evaluates an Expression and returns an Int or Bool.
+evalExpr :: Expr -> Env Val -> Val
+evalExpr (I n) _ = Left n
+evalExpr (B b) _ = Right b
+evalExpr (ADD l r) m = Left (unpackInt l m + unpackInt r m)
+evalExpr (SUB l r) m = Left (unpackInt l m - unpackInt r m)
+evalExpr (MUL l r) m = Left (unpackInt l m * unpackInt r m)
+evalExpr (DIV l r) m = Left (unpackInt l m `div` unpackInt r m)
+evalExpr (EQU l r) m = Right (unpackInt l m == unpackInt r m)
+evalExpr (NEQ l r) m = Right (unpackInt l m /= unpackInt r m)
+evalExpr (GRT l r) m = Right (unpackInt l m > unpackInt r m)
+evalExpr (GTE l r) m = Right (unpackInt l m >= unpackInt r m)
+evalExpr (LST l r) m = Right (unpackInt l m < unpackInt r m)
+evalExpr (LTE l r) m = Right (unpackInt l m <= unpackInt r m)
+evalExpr (NOT x)   m = Right (not (unpackBool x m))
+evalExpr (V x)     m = case lookup x m of
+                        Just v -> v
+                        Nothing -> error "Error: undefined variable"
+
+-- Unpacks an Int from an Expression of the form I Int
+unpackInt :: Expr -> Env Val -> Int
+unpackInt x m = case evalExpr x m of
+                    Left i  -> i
+                    Right _ -> error "Error: expected Int, got Bool instead"
+
+-- Unpacks a Bool from an Expression of the form B Bool
+unpackBool :: Expr -> Env Val -> Bool
+unpackBool x m = case evalExpr x m of
+                    Right b -> b 
+                    Left _  -> error "Error: expected Bool, got Int instead"
+
+-- Executes a command
+evalCmd :: Cmd -> Env Val -> Env Val
+evalCmd (Assign v e) m = insert v (evalExpr e m) m
 
 
 --
@@ -173,6 +224,7 @@ lowCase = map toLower
 
 cat_string :: String -> String -> String
 cat_string a b = a ++ b
+
 
 --
 -- *    Tuple Operations
@@ -196,6 +248,7 @@ tuple_first (x, y) = x
 -- | Returns the first element in a tuple of two values
 tuple_second :: (Expr, Expr) -> Expr
 tuple_second (x, y) = y
+
 
 --
 -- *    List Operations
