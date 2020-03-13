@@ -7,7 +7,12 @@ Blake Le - lebla@oregonstate.edu
 
 Our language is called does this sound bad, also known as dtsb. It uses an imperative paradigm, and is intended to be simple and easy to use, with uncomplicated syntax. We built it using the language defined in imp.hs as a foundation, and added extra features including strings, tuples, lists, and functions. 
 
-Compile using ghci: *ghci doesthissoundbad.hs*
+To use with ghci, compile with the following command: 
+*ghci doesthissoundbad.hs*
+
+To compile and use on the command line, use the following commands:
+*ghc -o dtsb doesthissoundbad.hs*, then
+*./dtsb [commands]*
 
 functions and their example usages (correct expected output is shown, wrong syntax will throw errors)
 
